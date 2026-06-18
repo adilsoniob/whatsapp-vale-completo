@@ -5,13 +5,15 @@ import { config } from "./config.js";
 import { log } from "./logger.js";
 import { createApp } from "./app.js";
 import { WhatsAppService } from "./services/whatsapp.js";
+import { Storage } from "./services/storage.js";
 
 if (!config.apiKey) {
   log.error("WHATSAPP_API_KEY não configurada. Saindo.");
   process.exit(1);
 }
 
-const whatsapp = new WhatsAppService();
+const storage = new Storage();
+const whatsapp = new WhatsAppService(null, storage);
 const app = createApp(whatsapp);
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
@@ -27,6 +29,7 @@ server.listen(config.port, () => {
   log.info("WhatsApp Server iniciado", {
     port: config.port,
     qrPage: `http://localhost:${config.port}/`,
+    painel: `http://localhost:${config.port}/admin`,
     health: `http://localhost:${config.port}/health`,
   });
 });

@@ -8,6 +8,7 @@ import { sendMessageRouter } from "./routes/send-message.js";
 import { reconnectRouter } from "./routes/reconnect.js";
 import { disconnectRouter } from "./routes/disconnect.js";
 import { qrPageRouter } from "./routes/qr-page.js";
+import { createAdminRouter } from "./routes/admin.js";
 
 export function createApp(whatsapp) {
   const app = express();
@@ -17,6 +18,9 @@ export function createApp(whatsapp) {
 
   // Locals ficam acessíveis em todas as rotas via req.app.locals
   app.locals.whatsapp = whatsapp;
+
+  // Painel admin + API de monitoramento (público, acessível via /admin)
+  app.use("/", createAdminRouter(whatsapp));
 
   // Rotas públicas (sem auth) — úteis para monitoramento
   app.use("/", qrPageRouter);

@@ -53,14 +53,20 @@ const withTimeout = (promise, ms, label) =>
   ]);
 
 export class WhatsAppService {
-  constructor(io) {
+  constructor(io, storage) {
     this.io = io;
+    this.storage = storage;
     this.status = { state: STATES.STARTING, qr: null, message: "Inicializando..." };
     this.client = null;
     this.initializing = null;
     this.reconnectAttempts = 0;
     this.lastSendAt = null;
     this.lastError = null;
+    this.profileName = null;
+    this.profileNumber = null;
+    this.profilePic = null;
+    this.connectedAt = null;
+    this.disconnectedAt = null;
   }
 
   // ---------- API pública ----------
@@ -72,6 +78,11 @@ export class WhatsAppService {
   getStatus() {
     return {
       ...this.status,
+      profileName: this.profileName,
+      profileNumber: this.profileNumber,
+      profilePic: this.profilePic,
+      connectedAt: this.connectedAt,
+      disconnectedAt: this.disconnectedAt,
       lastSendAt: this.lastSendAt,
       lastError: this.lastError,
       reconnectAttempts: this.reconnectAttempts,
@@ -110,17 +121,19 @@ export class WhatsAppService {
       );
 
       this.lastSendAt = new Date().toISOString();
-      log.info("Mensagem enviada", {
-        to: chatId,
-        messageId: sent?.id?._serialized || sent?.id || null,
-      });
+      const messageId = sent?.id?._serialized || sent?.id || null;
+      log.info("Mensagem enviada", { to: chatId, messageId });
+      this.storage?.addMessage({ to: cleanNumber, status: "sent", source: "api", id: messageId });
+      this.storage?.addLog("message_sent", `Mensagem enviada para ${cleanNumber}`, { to: cleanNumber, messageId });
+      this.io?.emit("admin:message", { to: cleanNumber, status: "sent", timestamp: new Date().toISOString() });
       return {
         success: true,
         message: "Mensagem enviada com sucesso.",
         to: chatId,
-        messageId: sent?.id?._serialized || sent?.id || null,
+        messageId,
       };
     } catch (err) {
+      this.storage?.addLog("message_error", `Erro ao enviar para ${cleanNumber}: ${err.message}`, { to: cleanNumber, error: err.message });
       return this._fail("SEND_ERROR", err.message || String(err), cleanNumber);
     }
   }
@@ -194,18 +207,39 @@ export class WhatsAppService {
       }
     });
 
-    client.on("ready", () => {
+    client.on("ready", async () => {
       this.reconnectAttempts = 0;
+      this.connectedAt = new Date().toISOString();
+      this.disconnectedAt = null;
       this._setStatus(STATES.CONNECTED, "WhatsApp conectado e pronto.", null);
       this.io?.emit("connected");
       log.info("WhatsApp conectado e pronto");
+      this.storage?.addLog("connected", "WhatsApp conectado e pronto");
+
+      try {
+        const info = client.info;
+        if (info) {
+          this.profileName = info.pushname || info.name || null;
+          this.profileNumber = info.wid?.user || info.me?.user || null;
+          try {
+            const picUrl = await client.getProfilePicUrl(info.wid._serialized);
+            this.profilePic = picUrl || null;
+          } catch {}
+          this.storage?.saveSession({
+            profileName: this.profileName,
+            profileNumber: this.profileNumber,
+            connectedAt: this.connectedAt,
+          });
+        }
+      } catch {}
     });
 
     client.on("disconnected", (reason) => {
+      this.disconnectedAt = new Date().toISOString();
       this._setStatus(STATES.OFFLINE, `WhatsApp desconectado: ${reason}`);
       this.io?.emit("disconnected", { reason });
       log.warn("WhatsApp desconectado", { reason });
-      // Reconexão automática se não foi logout manual.
+      this.storage?.addLog("disconnected", `WhatsApp desconectado: ${reason}`, { reason });
       if (reason !== "LOGOUT") {
         this._scheduleAutoReconnect("disconnected");
       }
@@ -214,7 +248,26 @@ export class WhatsAppService {
     client.on("auth_failure", (msg) => {
       this._setStatus(STATES.AUTH_FAILURE, `Falha de autenticação: ${msg}`);
       log.error("Falha de autenticação", { message: msg });
+      this.storage?.addLog("auth_failure", `Falha de autenticação: ${msg}`, { message: msg });
       this._scheduleAutoReconnect("auth_failure", 5000);
+    });
+
+    client.on("message_ack", (msg, ack) => {
+      const statusMap = { 1: "sent", 2: "received", 3: "read" };
+      const status = statusMap[ack] || "sent";
+      const phone = msg.from?.replace("@c.us", "") || "";
+      if (phone) {
+        this.storage?.updateMessageStatus(phone, status);
+        this.io?.emit("admin:message", { to: phone, status, timestamp: new Date().toISOString() });
+      }
+    });
+
+    client.on("message_create", (msg) => {
+      if (msg.fromMe && msg.to) {
+        const phone = msg.to.replace("@c.us", "");
+        this.storage?.addMessage({ to: phone, status: "sent", source: "app", id: msg.id?._serialized });
+        this.io?.emit("admin:message", { to: phone, status: "sent", timestamp: new Date().toISOString() });
+      }
     });
   }
 
@@ -253,11 +306,16 @@ export class WhatsAppService {
   }
 
   _setStatus(state, message, qr = undefined) {
+    const prevState = this.status.state;
     this.status = {
       state,
       qr: qr === undefined ? this.status.qr : qr,
       message,
     };
+    if (prevState !== state) {
+      this.storage?.addLog("state_change", `Estado: ${prevState} -> ${state}`, { from: prevState, to: state, message });
+      this.io?.emit("admin:status", this.getStatus());
+    }
   }
 
   _fail(code, error, phone = null) {
