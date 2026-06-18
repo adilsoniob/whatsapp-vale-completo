@@ -3,7 +3,7 @@ builder = "NIXPACKS"
 
 [deploy]
 startCommand = "node src/index.js"
-healthcheckPath = "/health"
+healthcheckPath = "/api/whatsapp/status"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
