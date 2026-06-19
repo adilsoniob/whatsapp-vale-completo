@@ -173,6 +173,15 @@ export async function pendingCount() {
   return rows.length && rows[0].values.length ? rows[0].values[0][0] : 0;
 }
 
+export async function deadletter(id, error) {
+  const d = await getDb();
+  const ts = nowISO();
+  d.run("UPDATE message_queue SET status = 'deadletter', last_error = ?, updated_at = ? WHERE id = ?", [String(error).slice(0, 500), ts, id]);
+  _save();
+  log.warn("[queue] Dead letter direto (sem retry)", { id, error: String(error).slice(0, 200) });
+  return true;
+}
+
 export async function clearCompleted() {
   const d = await getDb();
   d.run("DELETE FROM message_queue WHERE status = 'completed'");

@@ -119,6 +119,9 @@ export class WhatsAppSession {
       this.storage?.addMessage({ to: phone, status: "sent", source: "api", account: this.index, metadata: JSON.stringify({ queueId }) });
     } else if (result.code === "RATE_LIMIT") {
       await queue.revertToPending(queueId);
+    } else if (result.error && (result.error.includes("No LID") || result.error.includes("não registrado"))) {
+      await queue.deadletter(queueId, result.error);
+      this.storage?.addMessage({ to: phone, status: "failed", source: "api", account: this.index, metadata: JSON.stringify({ queueId, error: result.error }) });
     } else {
       await queue.fail(queueId, result.error || "SEND_ERROR");
       this.storage?.addMessage({ to: phone, status: "failed", source: "api", account: this.index, metadata: JSON.stringify({ queueId, error: result.error }) });
@@ -282,7 +285,10 @@ export class WhatsAppSession {
 
   _createClient() {
     return new Client({
-      authStrategy: new LocalAuth({ clientId: this.config.clientId + "-" + this.index }),
+      authStrategy: new LocalAuth({
+        clientId: this.config.clientId + "-" + this.index,
+        dataPath: "./data/.wwebjs_auth",
+      }),
       puppeteer: { headless: true, args: PUPPETEER_ARGS, protocolTimeout: 120_000 },
     });
   }
@@ -428,7 +434,7 @@ export class WhatsAppSession {
       try {
         const fs = await import("node:fs");
         const path = await import("node:path");
-        const authDir = path.join(process.cwd(), ".wwebjs_auth", `session-${this.config.clientId}-${this.index}`);
+        const authDir = path.join(process.cwd(), "data", ".wwebjs_auth", `session-${this.config.clientId}-${this.index}`);
         if (fs.existsSync(authDir)) {
           fs.rmSync(authDir, { recursive: true, force: true });
           log.info(`[${this.accountLabel}] Pasta de autenticação removida`);
