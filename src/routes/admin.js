@@ -413,7 +413,7 @@ function renderAccounts(accounts) {
         '<button class="btn btn-primary btn-sm" onclick="window._showQR(' + i + ')">QR Code</button>' +
         '<button class="btn btn-outline btn-sm" onclick="window._acConnect(' + i + ')">Conectar</button>' +
         '<button class="btn btn-warning btn-sm" onclick="window._acReconnect(' + i + ')">Reconectar</button>' +
-        '<button class="btn btn-danger btn-sm" onclick="if(confirm(\\'Desconectar ' + a.label + '?\\'))window._acDisconnect(' + i + ')">Desconectar</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="if(confirm(&#39;Desconectar ' + a.label + '?&#39;))window._acDisconnect(' + i + ')">Desconectar</button>' +
       "</div></div>";
   }).join("");
 }
