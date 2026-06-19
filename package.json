@@ -14,7 +14,7 @@
     "express": "^4.21.0",
     "qrcode": "^1.5.4",
     "socket.io": "^4.7.5",
-    "whatsapp-web.js": "^1.25.0"
+    "whatsapp-web.js": "^1.26.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -233,6 +233,7 @@ export class WhatsAppSession {
     return new Client({
       authStrategy: new LocalAuth({ clientId: this.config.clientId + "-" + this.index }),
       puppeteer: { headless: true, args: PUPPETEER_ARGS, protocolTimeout: 120_000 },
+      webVersionCache: { type: "remote", remotePath: "https://raw.githubusercontent.com/wppconnectteam/wa-version/main/html/2.2412.54.html" },
     });
   }
 
